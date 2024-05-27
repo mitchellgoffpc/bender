@@ -202,11 +202,64 @@ fn parse_line(line: &str) -> Vec<u8> {
     let op = &line[0..3];
     let args = &line[4..];
     match op {
-        // Compare & Jump (Columns 0, 4, C)
+        // Load & Store
+        "STY" => parse_movement_op("STY", args, 0x80),  // Load / store Y register
+        "LDY" => parse_movement_op("LDY", args, 0xA0),
+        "STX" => parse_movement_op("STX", args, 0x82),  // Load / store X register
+        "LDX" => parse_movement_op("LDX", args, 0xA2),
+        "STA" => parse_accumulator_op("STA", args, 0x80),  // Load / store accumulator
+        "LDA" => parse_accumulator_op("LDA", args, 0xA0),
+
+        // Transfer
+        "TYA" => vec![0x98],  // Transfer Y / accumulator
+        "TAY" => vec![0xA8],
+        "TXA" => vec![0x8A],  // Transfer X / accumulator
+        "TAX" => vec![0xAA],
+        "TXS" => vec![0x9A],  // Transfer X / stack pointer
+        "TSX" => vec![0xBA],
+
+        // Stack
+        "PHP" => vec![0x08],  // Push / pull processor register
+        "PLP" => vec![0x28],
+        "PHA" => vec![0x48],  // Push / pull accumulator
+        "PLA" => vec![0x68],
+
+        // Logic
+        "ORA" => parse_accumulator_op("ORA", args, 0x00),
+        "AND" => parse_accumulator_op("AND", args, 0x20),
+        "EOR" => parse_accumulator_op("EOR", args, 0x40),
+        "BIT" => parse_direct_op("BIT", args, Some(0x2C), Some(0x24), None),  // Test bits in memory with accumulator
+
+        // Arithmetic
+        "ADC" => parse_accumulator_op("ADC", args, 0x60),
+        "SBC" => parse_accumulator_op("SBC", args, 0xE0),
+        "CMP" => parse_accumulator_op("CMP", args, 0xC0),
+        "CPY" => parse_direct_op("CPY", args, Some(0xCC), Some(0xC4), Some(0xC0)),  // Compare Y register
+        "CPX" => parse_direct_op("CPX", args, Some(0xEC), Some(0xE4), Some(0xE0)),  // Compare X register
+
+        // Shift
+        "ASL" => parse_shift_op("INC", args, 0x00),
+        "ROL" => parse_shift_op("ROL", args, 0x20),
+        "LSR" => parse_shift_op("LSR", args, 0x40),
+        "ROR" => parse_shift_op("ROR", args, 0x60),
+
+        // Increment & Decrement
+        "DEC" => parse_shift_op("DEC", args, 0xC0),  // Increment / decrement memory
+        "INC" => parse_shift_op("INC", args, 0xE0),
+        "DEY" => vec![0x88],  // Increment / decrement Y
+        "INY" => vec![0xC8],
+        "DEX" => vec![0xCA],  // Increment / decrement X
+        "INX" => vec![0xE8],
+
+        // Control flow
         "BRK" => vec![0x00],
+        "NOP" => vec![0xEA],
+        "JMP" => parse_jmp_op(args),
         "JSR" => parse_abs_op("JSR", args, 0x20),  // Jump to subroutine
         "RTI" => vec![0x40],  // Return from interrupt
         "RTS" => vec![0x60],  // Return from subroutine
+
+        // Branching
         "BPL" => parse_rel_op("BPL", args, 0x10),  // Branch if plus / minus
         "BMI" => parse_rel_op("BMI", args, 0x30),
         "BVC" => parse_rel_op("BVC", args, 0x50),  // Branch if overflow flag is cleared / set
@@ -215,56 +268,15 @@ fn parse_line(line: &str) -> Vec<u8> {
         "BCS" => parse_rel_op("BCS", args, 0xB0),
         "BNE" => parse_rel_op("BNE", args, 0xD0),  // Branch if the zero flag is cleared / set
         "BEQ" => parse_rel_op("BEQ", args, 0xF0),
-        "BIT" => parse_direct_op("BIT", args, Some(0x2C), Some(0x24), None),  // Test bits in memory with accumulator
-        "CPY" => parse_direct_op("CPY", args, Some(0xCC), Some(0xC4), Some(0xC0)),  // Compare Y register
-        "CPX" => parse_direct_op("CPX", args, Some(0xEC), Some(0xE4), Some(0xE0)),  // Compare X register
-        "JMP" => parse_jmp_op(args),
 
-        // Push, Pull, Clear & Set Flags (Column 8)
-        "PHP" => vec![0x08],  // Push / pull processor register
-        "PLP" => vec![0x28],
-        "PHA" => vec![0x48],  // Push / pull accumulator
-        "PLA" => vec![0x68],
-        "CLC" => vec![0x18],  // Clear / set carry flag
+        // Flags
+        "CLC" => vec![0x18],  // Clear / set carry flag (C)
         "SEC" => vec![0x38],
-        "CLI" => vec![0x58],  // Clear / set interrupt disable flag
+        "CLI" => vec![0x58],  // Clear / set interrupt disable flag (I)
         "SEI" => vec![0x78],
-        "CLV" => vec![0xB8],  // Clear overflow flag
-        "CLD" => vec![0xD8],  // Clear / set decimal mode flag
+        "CLV" => vec![0xB8],  // Clear overflow flag (V)
+        "CLD" => vec![0xD8],  // Clear / set decimal mode flag (D)
         "SED" => vec![0xF8],
-
-        // Shift & Increment (Columns 6, 8, A, E)
-        "ASL" => parse_shift_op("INC", args, 0x00),
-        "ROL" => parse_shift_op("ROL", args, 0x20),
-        "LSR" => parse_shift_op("LSR", args, 0x40),
-        "ROR" => parse_shift_op("ROR", args, 0x60),
-        "DEC" => parse_shift_op("DEC", args, 0xC0),
-        "INC" => parse_shift_op("INC", args, 0xE0),
-        "INY" => vec![0xC8],  // Increment / decrement Y
-        "DEY" => vec![0x88],
-        "INX" => vec![0xE8],  // Increment / decrement X
-        "DEX" => vec![0xCA],
-
-        // Arithmetic & Logic (Columns 1, 5, 9, D)
-        "ORA" => parse_accumulator_op("ORA", args, 0x00),
-        "AND" => parse_accumulator_op("AND", args, 0x20),
-        "EOR" => parse_accumulator_op("EOR", args, 0x40),
-        "ADC" => parse_accumulator_op("ADC", args, 0x60),
-        "CMP" => parse_accumulator_op("CMP", args, 0xC0),
-        "SBC" => parse_accumulator_op("SBC", args, 0xE0),
-
-        // Movement (All columns)
-        "STY" => parse_movement_op("STY", args, 0x80),  // Load / store Y register
-        "LDY" => parse_movement_op("LDY", args, 0xA0),
-        "STX" => parse_movement_op("STX", args, 0x82),  // Load / store X register
-        "LDX" => parse_movement_op("LDX", args, 0xA2),
-        "LDA" => parse_accumulator_op("LDA", args, 0xA0),  // Load / store accumulator
-        "STA" => parse_accumulator_op("STA", args, 0x80),
-        "TYA" => vec![0x98],  // Transfer Y / accumulator
-        "TAY" => vec![0xA8],
-        "TXA" => vec![0x8A],  // Transfer X / accumulator
-        "TAX" => vec![0xAA],
-        "NOP" => vec![0xEA],  // No operation
 
         _ => panic!("Invalid op: {}", op)
     }

@@ -1,4 +1,5 @@
 mod assemble;
+mod run;
 use std::env;
 
 fn main() {
@@ -7,6 +8,6 @@ fn main() {
         eprintln!("Usage: {} <file_path>", args[0]);
     } else {
         let bytecode = assemble::assemble(&args[1]);
-        println!("{:x?}", bytecode);
+        run::run(bytecode);
     }
 }
