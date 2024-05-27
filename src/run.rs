@@ -79,6 +79,29 @@ fn set_zero_and_negative(value: u8, regs: &mut Registers) {
     set_negative(is_negative(value), regs);
 }
 
+fn should_branch(opcode: u8, regs: &Registers) -> bool {
+    match opcode {
+        0x10 => !get_negative(&regs),
+        0x30 => get_negative(&regs),
+        0x50 => !get_overflow(&regs),
+        0x70 => get_overflow(&regs),
+        0x90 => !get_carry(&regs),
+        0xB0 => get_carry(&regs),
+        0xD0 => !get_zero(&regs),
+        0xF0 => get_zero(&regs),
+        _ => panic!("Invalid opcode: {:#04X}", opcode)
+    }
+}
+
+fn apply_math(opcode: u8, operand: u8, arg: u8) -> u8 {
+    match opcode & 0xE0 {
+        0x00 => operand | arg,  // ORA
+        0x20 => operand & arg,  // AND
+        0x40 => operand ^ arg,  // EOR
+        _ => panic!("Invalid opcode: {:#04X}", opcode)
+    }
+}
+
 fn apply_shift(opcode: u8, operand: u8, regs: &mut Registers) -> u8 {
     let left = opcode & 0x40 == 0;
     let result = match opcode & 0xE0 {
@@ -105,6 +128,15 @@ fn get_movement_arg(opcode: u8, memory: &[u8], regs: &Registers) -> usize {
         0x14 => memory[regs.pc as usize] as usize + index,
         0x0C => read_u16(&memory, regs.pc) as usize,
         0x1C => read_u16(&memory, regs.pc) as usize + index,
+        _ => panic!("Invalid opcode: {:#04X}", opcode)
+    }
+}
+
+fn get_cmp_arg(opcode: u8, memory: &[u8], regs: &Registers) -> usize {
+    match opcode & 0x0F {
+        0x00 => regs.pc as usize,
+        0x04 => memory[regs.pc as usize] as usize,
+        0x0C => read_u16(&memory, regs.pc) as usize,
         _ => panic!("Invalid opcode: {:#04X}", opcode)
     }
 }
@@ -228,19 +260,12 @@ pub fn run(bytecode: Vec<u8>) {
             },
 
             // Logic
-            0x01 | 0x05 | 0x09 | 0x0D | 0x11 | 0x15 | 0x19 | 0x1D => {  // ORA
-                regs.a |= memory[get_accumulator_arg(opcode, &memory, &regs)];
-                regs.pc += match opcode { 0x0D | 0x19 | 0x1D => 2, _ => 1 };
-                set_zero_and_negative(regs.a, &mut regs);
-            },
-            0x21 | 0x25 | 0x29 | 0x2D | 0x31 | 0x35 | 0x39 | 0x3D => {  // AND
-                regs.a &= memory[get_accumulator_arg(opcode, &memory, &regs)];
-                regs.pc += match opcode { 0x2D | 0x39 | 0x3D => 2, _ => 1 };
-                set_zero_and_negative(regs.a, &mut regs);
-            },
-            0x41 | 0x45 | 0x49 | 0x4D | 0x51 | 0x55 | 0x59 | 0x5D => {  // EOR
-                regs.a ^= memory[get_accumulator_arg(opcode, &memory, &regs)];
-                regs.pc += match opcode { 0x4D | 0x59 | 0x5D => 2, _ => 1 };
+            0x01 | 0x05 | 0x09 | 0x0D | 0x11 | 0x15 | 0x19 | 0x1D |
+            0x21 | 0x25 | 0x29 | 0x2D | 0x31 | 0x35 | 0x39 | 0x3D |
+            0x41 | 0x45 | 0x49 | 0x4D | 0x51 | 0x55 | 0x59 | 0x5D => {  // ORA / AND / EOR
+                let arg = memory[get_accumulator_arg(opcode, &memory, &regs)];
+                regs.a = apply_math(opcode, regs.a, arg);
+                regs.pc += match opcode & 0x1F { 0x0D | 0x19 | 0x1D => 2, _ => 1 };
                 set_zero_and_negative(regs.a, &mut regs);
             },
             0x24 | 0x2C => {  // BIT
@@ -282,12 +307,7 @@ pub fn run(bytecode: Vec<u8>) {
             },
             0xC0 | 0xC4 | 0xCC | 0xE0 | 0xE4 | 0xEC => {  // CPY / CPX
                 let register = if opcode & 0x20 > 0 { regs.x } else { regs.y };
-                let arg = match opcode & 0x0F {
-                    0x00 => memory[regs.pc as usize],
-                    0x04 => memory[memory[regs.pc as usize] as usize],
-                    0x0C => memory[read_u16(&memory, regs.pc) as usize],
-                    _ => panic!("Invalid opcode: {:#04X}", opcode)
-                };
+                let arg = memory[get_cmp_arg(opcode, &memory, &regs)];
                 let result = register.wrapping_sub(arg);
                 set_carry(register >= arg, &mut regs);
                 set_zero_and_negative(result, &mut regs);
@@ -352,18 +372,7 @@ pub fn run(bytecode: Vec<u8>) {
             // Branching
             0x10 | 0x30 | 0x50 | 0x70 | 0x90 | 0xB0 | 0xD0 | 0xF0 => {  // BPL, BMI, BVC, BVS, BCC, BCS, BNE, BEQ
                 let offset = memory[regs.pc as usize] as i8;
-                let branch = match opcode {
-                    0x10 => !get_negative(&regs),
-                    0x30 => get_negative(&regs),
-                    0x50 => !get_overflow(&regs),
-                    0x70 => get_overflow(&regs),
-                    0x90 => !get_carry(&regs),
-                    0xB0 => get_carry(&regs),
-                    0xD0 => !get_zero(&regs),
-                    0xF0 => get_zero(&regs),
-                    _ => panic!("Invalid opcode: {:#04X}", opcode)
-                };
-                regs.pc = 1 + regs.pc.wrapping_add_signed(if branch { offset as i16 } else { 0 });
+                regs.pc = 1 + regs.pc.wrapping_add_signed(if should_branch(opcode, &regs) { offset as i16 } else { 0 });
             },
 
             // Flags
