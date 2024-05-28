@@ -55,7 +55,7 @@ impl Registers {
 
 // Helper function
 
-fn read_u16(memory: &[u8], addr: u16) -> u16 {
+pub fn read_u16(memory: &[u8], addr: u16) -> u16 {
     let lo = memory[addr as usize] as u16;
     let hi = memory[(addr + 1) as usize] as u16;
     (hi << 8) | lo
@@ -154,8 +154,8 @@ fn get_shift_arg(opcode: u8, memory: &[u8], regs: &Registers) -> usize {
 
 fn get_accumulator_arg(opcode: u8, memory: &[u8], regs: &Registers) -> usize {
     match opcode & 0x1F {
-        0x01 => memory[regs.pc as usize + regs.x as usize] as usize,
-        0x11 => memory[regs.pc as usize] as usize + regs.y as usize,
+        0x01 => memory[memory[regs.pc as usize] as usize + regs.x as usize] as usize,
+        0x11 => memory[memory[regs.pc as usize] as usize] as usize + regs.y as usize,
         0x05 => memory[regs.pc as usize] as usize,
         0x15 => memory[regs.pc as usize] as usize + regs.x as usize,
         0x09 => regs.pc as usize,
@@ -226,7 +226,7 @@ pub fn run(bytecode: &Vec<u8>) -> ([u8; MEM_SIZE], Registers) {
                 set_zero_and_negative(regs.y, &mut regs);
             },
             0x8A => {  // TXA
-                regs.a = regs.y;
+                regs.a = regs.x;
                 set_zero_and_negative(regs.a, &mut regs);
             },
             0xAA => {  // TAX
@@ -333,7 +333,7 @@ pub fn run(bytecode: &Vec<u8>) -> ([u8; MEM_SIZE], Registers) {
             0xC6 | 0xCE | 0xD6 | 0xDE | 0xE6 | 0xEE | 0xF6 | 0xFE => {  // DEC / INC
                 let addr = get_shift_arg(opcode, &memory, &regs);
                 memory[addr] = if opcode & 0x20 > 0 { memory[addr].wrapping_add(1) } else { memory[addr].wrapping_sub(1) };
-                regs.pc += match opcode { 0xCE | 0xDE => 2, _ => 1 };
+                regs.pc += match opcode { 0xCE | 0xDE | 0xEE | 0xFE => 2, _ => 1 };
                 set_zero_and_negative(memory[addr], &mut regs);
             },
             0x88 | 0xC8 => {  // DEY / INY
@@ -354,20 +354,24 @@ pub fn run(bytecode: &Vec<u8>) -> ([u8; MEM_SIZE], Registers) {
                 // NOTE: The address is only bumped by 2, so it points to the last byte of the JSR instruction
                 // See https://retrocomputing.stackexchange.com/questions/19543/why-does-the-6502-jsr-instruction-only-increment-the-return-address-by-2-bytes for an explanation
                 let addr = read_u16(&memory, regs.pc);
-                regs.pc += 2;
+                regs.pc += 1;
                 memory[STACK_ADDR + regs.sp as usize] = (regs.pc >> 8) as u8;
                 memory[STACK_ADDR + regs.sp as usize - 1] = (regs.pc & 0xFF) as u8;
                 regs.sp = regs.sp.wrapping_sub(2);
                 regs.pc = addr;
             },
             0x40 => {  // RTI
+                regs.sp = regs.sp.wrapping_add(1);
                 regs.p = memory[STACK_ADDR + regs.sp as usize];    // NOTE: Bit 5 should be ignored here, but it's not used for anything so it doesn't matter
-                regs.pc = read_u16(&memory, STACK_ADDR as u16 + regs.sp as u16 + 1);
-                regs.sp = regs.sp.wrapping_add(3);
+                regs.sp = regs.sp.wrapping_add(1);
+                regs.pc = read_u16(&memory, STACK_ADDR as u16 + regs.sp as u16);
+                regs.sp = regs.sp.wrapping_add(1);
+
             },
             0x60 => {  // RTS
-                regs.pc = read_u16(&memory, STACK_ADDR as u16 + regs.sp as u16 + 1) + 1;  // Add 1 to skip the last byte of the JSR instruction
-                regs.sp = regs.sp.wrapping_add(2);
+                regs.sp = regs.sp.wrapping_add(1);
+                regs.pc = read_u16(&memory, STACK_ADDR as u16 + regs.sp as u16) + 1;  // Add 1 to skip the last byte of the JSR instruction
+                regs.sp = regs.sp.wrapping_add(1);
             },
 
             // Branching

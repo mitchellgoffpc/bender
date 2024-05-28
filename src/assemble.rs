@@ -40,7 +40,7 @@ fn is_indexed_address(addr: &str) -> bool {
     parts.len() == 2 && is_address(parts[0])
 }
 fn is_indirect_indexed_zpg_address(addr: &str) -> bool {
-    addr.len() > 4 && addr.starts_with("(") && is_zpg_address(&addr[1..4]) && &addr[4..5] == ","
+    addr.len() > 4 && addr.starts_with("(") && is_zpg_address(&addr[1..4]) && (&addr[4..5] == "," || &addr[4..6] == "),")
 }
 
 
@@ -63,7 +63,7 @@ fn parse_address(addr: &str) -> Vec<u8> {
 }
 
 fn parse_indirect_address(addr: &str) -> Vec<u8> {
-    if addr.len() == 7 { parse_address(&addr[2..6]) } else { parse_address(&addr[2..4]) }
+    if addr.len() == 7 { parse_address(&addr[1..6]) } else { parse_address(&addr[1..4]) }
 }
 
 fn parse_indexed_address(addr: &str) -> (Vec<u8>, char) {
@@ -169,14 +169,14 @@ fn parse_movement_op(op: &str, args: &str, offset: u8) -> Vec<u8> {
         let (address, index) = parse_indexed_address(args);
         let opcode = offset +
             if index == 'X' && (op == "LDY" || op == "STY") { 0x14 }
-            else if index == 'Y' && (op == "LDX" || op == "STX") { 0x16 }
+            else if index == 'Y' && (op == "LDX" || op == "STX") { 0x14 }
             else { panic!("Indexing on {} not supported for op {}: {}", index, op, args) };
         ivec![opcode, address]
     } else if is_indexed_address(args) && op != "STX" && op != "STY" {
         let (address, index) = parse_indexed_address(args);
         let opcode = offset +
             if index == 'X' && op == "LDY" { 0x1C }
-            else if index == 'Y' && op == "LDX" { 0x1E }
+            else if index == 'Y' && op == "LDX" { 0x1C }
             else { panic!("Indexing on {} not supported for op {}: {}", index, op, args) };
         ivec![opcode, address]
     } else if is_zpg_address(args) {
@@ -195,6 +195,8 @@ fn parse_movement_op(op: &str, args: &str, offset: u8) -> Vec<u8> {
 
 fn parse_line(line: &str) -> Vec<u8> {
     let line = line.split(';').next().unwrap().trim();
+    if line.is_empty() { return Vec::new(); }
+
     let op = &line[0..3];
     let args = if line.len() > 4 { &line[4..] } else { "" };
     match op {
@@ -234,7 +236,7 @@ fn parse_line(line: &str) -> Vec<u8> {
         "CPX" => parse_direct_op("CPX", args, Some(0xEC), Some(0xE4), Some(0xE0)),  // Compare X register
 
         // Shift
-        "ASL" => parse_shift_op("INC", args, 0x00),
+        "ASL" => parse_shift_op("ASL", args, 0x00),
         "ROL" => parse_shift_op("ROL", args, 0x20),
         "LSR" => parse_shift_op("LSR", args, 0x40),
         "ROR" => parse_shift_op("ROR", args, 0x60),
