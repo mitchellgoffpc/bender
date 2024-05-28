@@ -22,6 +22,7 @@
 // - https://www.pagetable.com/c64ref/6502/?tab=2
 // - http://www.6502.org/tutorials/vflag.html
 // - https://www.nesdev.org/wiki/Status_flags
+// - https://skilldrick.github.io/easy6502/
 
 
 const MEM_SIZE: usize = 0x10000;
@@ -29,13 +30,13 @@ const RESET_VECTOR_ADDR: usize = 0xFFFC;
 const CODE_ADDR: usize = 0x8000;
 const STACK_ADDR: usize = 0x0100;
 
-struct Registers {
-    a: u8,    // Accumulator
-    x: u8,    // X index register
-    y: u8,    // Y index register
-    pc: u16,  // Program counter
-    sp: u8,   // Stack pointer
-    p: u8,    // Status flags
+pub struct Registers {
+    pub a: u8,    // Accumulator
+    pub x: u8,    // X index register
+    pub y: u8,    // Y index register
+    pub pc: u16,  // Program counter
+    pub sp: u8,   // Stack pointer
+    pub p: u8,    // Status flags
 }
 
 impl Registers {
@@ -62,10 +63,10 @@ fn read_u16(memory: &[u8], addr: u16) -> u16 {
 
 fn is_negative(value: u8) -> bool { (value & 0x80) != 0 }
 
-fn get_carry(regs: &Registers) -> bool { (regs.p & 0x01) << 0 != 0 }
-fn get_zero(regs: &Registers) -> bool { (regs.p & 0x02) << 1 != 0 }
-fn get_overflow(regs: &Registers) -> bool { (regs.p & 0x40) << 6 != 0 }
-fn get_negative(regs: &Registers) -> bool { (regs.p & 0x80) << 7 != 0 }
+fn get_carry(regs: &Registers) -> bool { (regs.p & 0x01) != 0 }
+fn get_zero(regs: &Registers) -> bool { (regs.p & 0x02) != 0 }
+fn get_overflow(regs: &Registers) -> bool { (regs.p & 0x40) != 0 }
+fn get_negative(regs: &Registers) -> bool { (regs.p & 0x80) != 0 }
 
 fn set_carry(value: bool, regs: &mut Registers) { regs.p = (regs.p & 0xFE) | ((value as u8) << 0) }
 fn set_zero(value: bool, regs: &mut Registers) { regs.p = (regs.p & 0xFD) | ((value as u8) << 1) }
@@ -168,7 +169,7 @@ fn get_accumulator_arg(opcode: u8, memory: &[u8], regs: &Registers) -> usize {
 
 // Run the program
 
-pub fn run(bytecode: Vec<u8>) {
+pub fn run(bytecode: &Vec<u8>) -> ([u8; MEM_SIZE], Registers) {
     let mut memory = [0 as u8; MEM_SIZE];
     let mut regs = Registers::new();
 
@@ -387,4 +388,6 @@ pub fn run(bytecode: Vec<u8>) {
             _ => { panic!("Unknown opcode: {:#04X}", opcode); }
         }
     }
+
+    (memory, regs)
 }

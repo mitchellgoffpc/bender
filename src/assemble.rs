@@ -17,10 +17,6 @@
 // F‐ | BEQ rel  | SBC ind,Y | ---   | --- | ---       | SBC zpg,X | INC zpg,X | --- | SED impl | SBC abs,Y | ---      | --- | ---       | SBC abs,X | INC abs,X | ---
 
 
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-
-
 // Expression type checking
 
 fn is_byte_literal(literal: &str) -> bool {
@@ -200,7 +196,7 @@ fn parse_movement_op(op: &str, args: &str, offset: u8) -> Vec<u8> {
 fn parse_line(line: &str) -> Vec<u8> {
     let line = line.split(';').next().unwrap().trim();
     let op = &line[0..3];
-    let args = &line[4..];
+    let args = if line.len() > 4 { &line[4..] } else { "" };
     match op {
         // Load & Store
         "STY" => parse_movement_op("STY", args, 0x80),  // Load / store Y register
@@ -285,15 +281,11 @@ fn parse_line(line: &str) -> Vec<u8> {
 
 // Assemble program
 
-pub fn assemble(file_path: &String) -> Vec<u8> {
-    let file = File::open(file_path).expect("Failed to open file");
-    let buf_reader = BufReader::new(file);
-
-
+pub fn assemble(code: &str) -> Vec<u8> {
     let mut program: Vec<u8> = Vec::new();
-    for line in buf_reader.lines() {
-        let line = line.expect("Failed to read line");
+    for line in code.lines() {
         program.extend(parse_line(&line));
     }
+    program.push(0x00);  // BRK
     program
 }
